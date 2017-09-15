@@ -32,6 +32,7 @@ At the time of this writing, `ember-defenestrate` is a proof-of-concept tool. As
 2. It is not actually a gem, making installation and usage a bit awkward.
 3. `ember-defenestrate` only supports the Ember.js pod structure and the new Module Unification structure. If you’re using the classic Ember.js project structure, this version won’t work for you.
 4. `ember-defenestrate`’s files can’t live in the same directory as your Ember.js project. This is because of limitations in Broccoli, as well as greedy file watchers that step on each other. A future version of `ember-defenestrate` will hopefully overcome this limitation.
+5. There is no support for tests at this time. Mostly, this is because tests live in a different tree in the Ember.js project structure. Secondarily, not every developer would want to see their tests inline.
 
 ## Installation
 
@@ -58,7 +59,17 @@ The first parameter to `ember-defenestrate` is the Ember.js application source d
 
 To stop ember-defenestrate, hit `ctrl-c`.
 
+In your editing workflow, you’ll probably want two editors open: one for `bookstore-mbr` and one for `bookstore`. Sometimes it makes sense to work with the original file (e.g. `config/environment.js`, `app/router.js`), and sometimes it makes sense to work with the `.mbr` file (components, routes).
+
 ## Syntax highlighting
 
 So far I have only created one syntax, for Sublime Text, called “Sublime Ember”. I have included the necessary syntax file, but getting it installed is outside the scope of this document at this time. 
+
+## Next Steps
+
+1. Rewrite in Javascript as a proper `npm` module
+2. Create a proper syntax file for more than just Sublime Text
+3. Create a superior way to handle the naturally independent files such as `config/environment.js`, `app/router.js`, etc.
+4. Support the classic Ember.js project structure
+5. Integrate with `broccoli` (this would probably require changes to broccoli to allow generating files inside the project tree rather than in the build tree)
 
