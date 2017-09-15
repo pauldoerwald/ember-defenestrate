@@ -1,0 +1,143 @@
+#!/usr/bin/env ruby
+
+require 'listen'
+require 'FileUtils'
+
+class EmberFileWatcher
+  def initialize(source_path, virtual_path)
+    @source_path = source_path
+    @virtual_path = virtual_path
+    @virtual_path = '.' if @virtual_path == nil || @virtual_path == ""
+    @just_edited_list = []
+  end
+
+  def build_virtual_trees
+    puts "building virtual tree (assuming pods structure)"
+    build_mbr "#{@virtual_path}/app"
+    Dir.glob("#{@source_path}/app/**/*").each do |f|
+      keep_path = f.gsub("#{@source_path}/", '')
+      build_mbr(keep_path) if File.directory?(f)
+    end
+  end
+
+  def build_mbr(pathname)
+    vpath = @virtual_path + '/' + pathname
+    spath = @source_path + '/' + pathname
+    puts "Building #{vpath}.mbr"
+    found_files = Dir.glob(spath + '/*')
+    found_files = found_files.select{|x| File.file?(x)}
+    puts " - found files: #{found_files.inspect}"
+    if found_files.any?
+      puts " - creating output file"
+      FileUtils.mkdir_p(File.dirname("#{vpath}"))
+      f = File.new("#{vpath}.mbr", 'w')
+      f.write("// #{vpath}.mbr\n\n")
+      found_files.each do |ff|
+        f.write("~~~#{ff}\n")
+        f.write(File.read(ff))
+        f.write("\n~~~\n\n")
+      end
+      f.close
+    else
+      puts " - no files; skipping output"
+    end
+  end
+
+  def just_edited?(f)
+    if @just_edited_list.include?(File.absolute_path(f))
+      puts "ignoring change to #{f}"
+      remove_just_edited(f)
+      return true
+    end
+    return false
+  end
+
+  def add_just_edited(f)
+    @just_edited_list << File.absolute_path(f)
+    puts "Adding #{f} to @just_edited_list: #{@just_edited_list.inspect}"
+  end
+
+  def remove_just_edited(f)
+    @just_edited_list = @just_edited_list - [File.absolute_path(f)]
+    puts "Removing #{f} from @just_edited_list: #{@just_edited_list.inspect}"
+  end
+
+  def setup_sourcedir_listener
+    absolute_source_path = File.absolute_path(@source_path)
+    puts "Listening at #{absolute_source_path}"
+    @sourcedir_listener = Listen.to(@source_path, ignore: [%r{node_modules}]) do |modified, added, removed|
+      # virtualdir_listener.stop
+      (modified + added).each do |f|
+        next if just_edited?(f)
+        puts "Changed source file #{absolute_source_path}/#{f}"
+        keep_path = f.gsub("#{absolute_source_path}/", '')
+        case File.ftype(f)
+        when 'file'
+          file_to_create = keep_path.gsub("/#{File.basename(keep_path)}", '')
+          add_just_edited(file_to_create+'.mbr')
+          build_mbr(file_to_create)
+        end
+      end
+      removed.each do |f|
+        next if just_edited?(f)
+        puts "Removed source file #{absolute_source_path}/#{f}"
+        keep_path = f.gsub("#{absolute_source_path}/", '')
+        file_to_create = keep_path.gsub("/#{File.basename(keep_path)}", '')
+        add_just_edited(file_to_create+'.mbr')
+        build_mbr(file_to_create)
+      end
+      # virtualdir_listener.start
+    end
+
+    return @sourcedir_listener
+  end
+
+  def setup_virtualdir_listener
+    re = Regexp.new("^~~~(.+?)$\n(.*?)^\n~~~$", Regexp::MULTILINE)
+    puts "Listening at #{File.absolute_path(@virtual_path)}"
+    @virtualdir_listener = Listen.to(@virtual_path, only: /(\.ember|\.mbr)$/) do |modified, added, removed|
+      # sourcedir_listener.stop
+      added.each do |f|
+        puts "++ added virtual file #{f} - ignored"
+      end
+      modified.each do |f|
+        next if just_edited?(f)
+        puts "++ modified virtual file #{f}"
+        contents = File.read(f)
+        outputs = contents.scan(re)
+        outputs.each do |o|
+          absolute_output = File.absolute_path(o[0])
+          puts "touching #{absolute_output}"
+          add_just_edited(absolute_output)
+          File.open(absolute_output, mode='w') do |wri|
+            wri.write(o[1])
+          end
+        end
+      end
+      removed.each do |f|
+        puts "++ removed virtual file #{f} - ignored"
+      end
+      # sourcedir_listener.start
+    end
+
+    return @virtualdir_listener
+  end
+
+  def virtualdir_listener
+    @virtualdir_listener
+  end
+
+  def sourcedir_listener
+    @sourcedir_listener
+  end
+end
+
+
+
+
+efw = EmberFileWatcher.new(ARGV[0], ARGV[1])
+efw.build_virtual_trees
+efw.setup_sourcedir_listener.start
+efw.setup_virtualdir_listener.start
+
+sleep
